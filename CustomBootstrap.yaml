@@ -206,7 +206,7 @@ Resources:
                         #'rm -rf /tmp/*',
                         'cd /tmp',
                         'git %s %s' % (git_command, remote_repository),
-                        'ls /tmp/template-environment-configuration'
+                        'ls /tmp/cloudformation-playground'
                     ]),
                     stderr=subprocess.STDOUT,
                     shell=True).decode()
