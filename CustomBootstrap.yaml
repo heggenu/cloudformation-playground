@@ -166,7 +166,7 @@ Resources:
       Timeout: 30
       Role: !GetAtt LambdaRepoURLExecutionRole.Arn
       Code:
-        ZipFile: |
+        ZipFile: !Sub |
           from __future__ import print_function
           import os
           import subprocess
@@ -212,22 +212,18 @@ Resources:
                     shell=True).decode()
                 
                 logger.info(output.split('\n'))
+
+                logger.info("${RepoURL}")
           
                 privateSSHKey=ssm.get_parameter(
                   Name='/my/securestring/data',
                   WithDecryption=True
                 )
-                
-                # Add code here to run templating based on Jinja2
-                
-                # Commit templated terraform to private Git repo using private SSH key
 
                 logger.info("Successfully retrieved parameter {}".format(name))
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, name)
 
               if event['RequestType'] == 'Update':
-              
-                # Potentially support updating config repo from CloudFormation.
 
                 logger.info("Successfully updated parameter {}".format(name))
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, name)
@@ -276,3 +272,6 @@ Outputs:
   
   AWSAccount:
     Value: !Ref "AWS::AccountId"
+
+  TestURL:
+    Value: "https://eu-central-1.console.aws.amazon.com/cloudformation/home?region=eu-central-1#/stacks/quickcreate?templateUrl=https%3A%2F%2Fkentrikosdemo.s3.eu-central-1.amazonaws.com%2FCustomBootstrap.yaml&stackName=henriktest&param_HostedZoneID=ABC123&param_RepoURL=gitssh"
