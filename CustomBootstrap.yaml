@@ -217,11 +217,17 @@ Resources:
                   Name='/my/securestring/data',
                   WithDecryption=True
                 )
+                
+                # Add code here to run templating based on Jinja2
+                
+                # Commit templated terraform to private Git repo using private SSH key
 
                 logger.info("Successfully retrieved parameter {}".format(name))
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, name)
 
               if event['RequestType'] == 'Update':
+              
+                # Potentially support updating config repo from CloudFormation.
 
                 logger.info("Successfully updated parameter {}".format(name))
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, name)
