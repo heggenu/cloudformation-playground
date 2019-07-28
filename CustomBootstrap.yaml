@@ -1,0 +1,272 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Launch a custom Bootstrap
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    -
+      Label:
+        default: "AWS Configuration"
+      Parameters:
+        - SubnetName
+        - HostedZoneID
+    -
+      Label:
+        default: "Top-level environment configuration"
+      Parameters:
+        - VpcName
+        - GitSSHPrivateKey
+
+Parameters:
+  HostedZoneID:
+    Description: Hosted Zone ID
+    Type: AWS::Route53::HostedZone::Id
+
+  GitSSHPrivateKey:
+      NoEcho: 'true'
+      Description: Private SSH key to access repositories
+      Type: String
+  
+  RepoURL:
+      Description: Full ssh URL to configuration repository (starting with ssh://)
+      Type: String
+
+Resources:
+
+  # SSM SecureString parameter for SSH Key
+  MySSMSecureString:
+    Type: Custom::SSMSecureString
+    Properties:
+      ServiceToken: !GetAtt SSMSecureStringCustomResource.Arn
+      Name: '/my/securestring/data'
+      Value: !Ref GitSSHPrivateKey
+      Description: 'Dummy'
+
+  # Git Repo URL for cloning
+  MyRepoUrl:
+    Type: Custom::RepoURL
+    Properties:
+      ServiceToken: !GetAtt RepoURLCustomResource.Arn
+      Name: 'RepoURL'
+      Value: !Ref RepoURL
+    DependsOn: MySSMSecureString
+
+  # Custom resource to create/update/delete SSM securestring parameters
+  SSMSecureStringCustomResource:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.7
+      Timeout: 30
+      Role: !GetAtt LambdaSSMSecureStringExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+          import logging
+
+          def parameter_exists(name):
+            response = boto3.client('ssm').describe_parameters(
+                ParameterFilters=[{
+                    'Key': 'Name',
+                    'Values': [
+                        name
+                    ]
+                }]
+            )
+            return len(response["Parameters"]) > 0
+                  
+          def handler(event, context):
+            logger = logging.getLogger()
+            logger.setLevel(logging.INFO)
+
+            # Get SSM parameter name
+            name = event["ResourceProperties"]["Name"]
+    
+            # initialize our response
+            response_data = {}
+            response_status = cfnresponse.FAILED
+            
+            logger.info('Received event: {}'.format(json.dumps(event)))
+
+            try:
+              ssm=boto3.client('ssm')
+            except Exception as e:
+              logger.info('boto3.client failure: {}'.format(e))
+              cfnresponse.send(event, context, cfnresponse.FAILED, response_data)
+            
+            if event['RequestType'] in ['Create', 'Update']:
+              if event["RequestType"] == "Create" and parameter_exists(name):
+                cfnresponse.send(event, context, cfnresponse.FAILED, response_data)
+
+              response = boto3.client('ssm').put_parameter(
+                Name=name,
+                Description=event["ResourceProperties"]["Description"],
+                Value=event["ResourceProperties"]["Value"],
+                Type="SecureString",
+                #KeyId=event["ResourceProperties"]["KeyId"],
+                Overwrite=True
+              )
+
+              logger.info("Successfully stored parameter {}".format(name))
+
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, response, name)
+              
+            elif event['RequestType'] == 'Delete':
+              boto3.client('ssm').delete_parameter(
+                Name=event["PhysicalResourceId"],
+              )
+              logger.info("Successfully deleted parameter: {}".format(name))
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, None, name)
+              
+
+  # execution role for the SSM secure string custom resource function
+  LambdaSSMSecureStringExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+          - Effect: Allow
+            Action:
+              - ssm:PutParameter
+              - ssm:GetParameter
+              - ssm:DescribeParameters
+              - ssm:DeleteParameter
+            Resource: "*"
+
+# Custom resource to for handling the Git Repo URL
+  RepoURLCustomResource:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.7
+      Layers: [!Sub "arn:aws:lambda:${AWS::Region}:553035198032:layer:git:6"]
+      Timeout: 30
+      Role: !GetAtt LambdaRepoURLExecutionRole.Arn
+      Code:
+        ZipFile: |
+          from __future__ import print_function
+          import os
+          import subprocess
+          import json
+          import boto3
+          import logging
+          import cfnresponse
+                
+          def handler(event, context):
+              logger = logging.getLogger()
+              logger.setLevel(logging.INFO)
+              
+              logger.info('Received event: {}'.format(json.dumps(event)))
+
+              name = event["ResourceProperties"]["Name"]
+
+              # initialize our response
+              response_data = {}
+
+              try:
+                ssm=boto3.client('ssm')
+              except Exception as e:
+                logger.info('boto3.client failure: {}'.format(e))
+                cfnresponse.send(event, context, cfnresponse.FAILED, response_data)
+              
+              if event['RequestType'] == 'Create':
+              
+                # The Git repository to clone
+                remote_repository = 'https://github.com/heggenu/cloudformation-playground.git'
+                git_command = 'clone --depth 1'
+                
+                subprocess.run(["rm","-rf", "/tmp/*.*"])
+                
+                # Clone the remote Git repository
+                output=subprocess.check_output(
+                    ' && '.join([
+                        #'rm -rf /tmp/*',
+                        'cd /tmp',
+                        'git %s %s' % (git_command, remote_repository),
+                        'ls /tmp/template-environment-configuration'
+                    ]),
+                    stderr=subprocess.STDOUT,
+                    shell=True).decode()
+                
+                logger.info(output.split('\n'))
+          
+                privateSSHKey=ssm.get_parameter(
+                  Name='/my/securestring/data',
+                  WithDecryption=True
+                )
+
+                logger.info("Successfully retrieved parameter {}".format(name))
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, name)
+
+              if event['RequestType'] == 'Update':
+
+                logger.info("Successfully updated parameter {}".format(name))
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, name)
+
+              elif event['RequestType'] == 'Delete':
+                
+                logger.info("Successfully deleted parameter: {}".format(name))
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, None, name)
+          
+
+  # execution role for the SSM secure string custom resource function
+  LambdaRepoURLExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+            Resource: "*"
+
+# Outputs - Display function output
+
+Outputs:
+  AWSRegion:
+    Value: !Ref "AWS::Region"
+  
+  AWSAccount:
+    Value: !Ref "AWS::AccountId"
