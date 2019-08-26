@@ -64,5 +64,12 @@ def lambda_handler(event, context):
         ]),
         stderr=subprocess.STDOUT,
         shell=True).decode()
+      
+    #result = subprocess.run(["git push -u origin master"], cwd='/tmp/cloudformation-playground',
+    #                    shell=True,
+    #                    stdout=subprocess.PIPE,
+    #                    stderr=subprocess.PIPE,
+    #                    check=False)
+    #print(result)
     
     #print(output.split('\n'))
