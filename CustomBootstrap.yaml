@@ -162,7 +162,7 @@ Resources:
     Properties:
       Handler: "index.handler"
       Runtime: python3.7
-      Layers: [!Sub "arn:aws:lambda:${AWS::Region}:553035198032:layer:git:6"]
+      Layers: [!Sub "arn:aws:lambda:${AWS::Region}:553035198032:layer:git:6","arn:aws:lambda:eu-central-1:381251817649:layer:Jinja2:2"]
       Timeout: 30
       Role: !GetAtt LambdaRepoURLExecutionRole.Arn
       Code:
