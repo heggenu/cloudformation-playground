@@ -1,4 +1,6 @@
 from __future__ import print_function
+from distutils.dir_util import copy_tree
+
 import os
 import subprocess
 import json
@@ -16,15 +18,51 @@ def lambda_handler(event, context):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     
-    logger.info('Received event: {}'.format(json.dumps(event)))
+    #logger.info('Received event: {}'.format(json.dumps(event)))
+    
+    #DEFAULT VALUES
+    default_aws_account = '1234567890'
+    default_opp_account = '0987654321'
+    default_environment_type = 'test'
+    default_role_name = 'AssumeKopsCrossAccount'
+    default_region = 'us-east-1'
+    default_product_domain_name = 'demo'
+    default_jenkins_config_url = 'https://jenkins.com'
+    default_http_proxy = "https://proxy.com"
+    default_vpc_id = "vpc-123456"
+    default_subnet1_id = "subnet-12345"
+    default_subnet2_id = "subnet-23456"
+    default_subnet3_id = "subnet-34567"
+    default_private_hosted_zone_id = "AAAAAAAAA"
+    default_private_hosted_zone_alias_jenkins = "Jenkins"
+    default_jxDomainAliasPrefix = "JX"
+    default_gitBitbucketServer = "https://bitbucket.com"
+    default_gitProviderUrl = "https://github.com"
+    default_gitApiToken = "jf982j3498fj349j"
+    default_gitUsername = "gitman"
+    
+    #replaces values into the templated file, to add a value add curly braces: ex - {{value}}
+    aws_account = default_aws_account
+    aws_opp_account =  default_opp_account
+    environment_type =  default_environment_type
+    region =  default_region
+    product_domain_name = default_product_domain_name
+    jenkins_config_url = default_jenkins_config_url
+    http_proxy = default_http_proxy
+    vpc_id = default_vpc_id
+    
+    #Jenkins-Core configuration
+    private_hosted_zone_id = default_private_hosted_zone_id
+    private_hosted_zone_alias_jenkins = default_private_hosted_zone_alias_jenkins
+
     
     # The Git repository to clone
-    remote_repository = 'https://github.com/heggenu/cloudformation-playground.git'
+    remote_repository = 'https://github.com/kentrikos/template-environment-configuration.git'
     new_remote_repository = 'git@github.com:heggenu/lambda-git-push.git'
-    git_command = 'clone --depth 1'
+    git_command = 'clone --depth 1 -b jinja_templating --single-branch'
     git_command_add_origin = 'remote add origin'
     
-    subprocess.run(["rm","-rf", "/tmp/cloudformation-playground"])
+    subprocess.run(["rm","-rf", "/tmp/template-environment-configuration"])
     subprocess.run(["rm","-rf", "/tmp/id_rsa"])
 
     os.environ["GIT_SSH_COMMAND"] = "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i /tmp/id_rsa"
@@ -47,16 +85,46 @@ def lambda_handler(event, context):
     subprocess.run(["chmod","700", "/tmp/id_rsa"])
 
     # Clone the remote Git repository
-    output=subprocess.check_output(
+    clone=subprocess.check_output(
         ' && '.join([
             #'rm -rf /tmp/*',
             'git config --global --add user.email "example@example.com"',
             'git config --global --add user.name "example"',
             'cd /tmp',
-            'git %s %s' % (git_command, remote_repository),
-            'cd /tmp/cloudformation-playground',
+            'git %s %s' % (git_command, remote_repository)
+        ]),
+        stderr=subprocess.STDOUT,
+        shell=True).decode()
+    
+    os.chdir('/tmp/template-environment-configuration')
+    
+    region='eu-central-1'
+    
+    # copy new folder structure
+    fromDirectory = "operations/region"
+    toDirectory = "operations/" + region + "/"
+    copy_tree(fromDirectory, toDirectory)
+    
+    fromDirectory = "application/region"
+    toDirectory = "application/" + region + "/"
+    copy_tree(fromDirectory, toDirectory)
+    
+    TEMPLATE_FILE = "application/" + region + "/terraform.template.tfvars"
+    with open(TEMPLATE_FILE) as file_:
+        template = Template(file_.read())
+    #add value from top section here if newly added    
+    rendered_file = template.render(application_aws_account_number=aws_account,environment_type=environment_type)
+    f = open("application/" + region + "/terraform.tfvars" , "w")
+    f.write(rendered_file)
+    f.close()
+        
+    # Clone the remote Git repository
+    push=subprocess.check_output(
+        ' && '.join([
+            'cd /tmp/template-environment-configuration',
             'rm -rf .git',
             'git init',
+            'ls -la',
             'git %s %s' % (git_command_add_origin, new_remote_repository),
             'git add .',
             'git commit -m initial',
@@ -64,7 +132,7 @@ def lambda_handler(event, context):
         ]),
         stderr=subprocess.STDOUT,
         shell=True).decode()
-      
+    
     #result = subprocess.run(["git push -u origin master"], cwd='/tmp/cloudformation-playground',
     #                    shell=True,
     #                    stdout=subprocess.PIPE,
@@ -72,4 +140,4 @@ def lambda_handler(event, context):
     #                    check=False)
     #print(result)
     
-    #print(output.split('\n'))
+    print(clone.split('\n'))
