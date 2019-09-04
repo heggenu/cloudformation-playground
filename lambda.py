@@ -19,6 +19,11 @@ def handler(event, context):
     logger.info('Received event: {}'.format(json.dumps(event)))
 
     name = event["ResourceProperties"]["Name"]
+    print(name)
+    gitrepo=event["ResourceProperties"]["Value"]
+    print(gitrepo)
+    bobba=event["ResourceProperties"]["Test"]
+    print(bobba)
 
     # initialize our response
     response_data = {}
@@ -43,7 +48,7 @@ def handler(event, context):
       
       # The Git repository to clone
       remote_repository = 'https://github.com/kentrikos/template-environment-configuration.git'
-      new_remote_repository = 'git@github.com:heggenu/lambda-git-push.git'
+      new_remote_repository = gitrepo
       git_command = 'clone --depth 1 -b jinja_templating --single-branch'
       git_command_add_origin = 'remote add origin'
       
