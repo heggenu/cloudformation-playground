@@ -124,12 +124,10 @@ def handler(event, context):
               'git %s %s' % (git_command_add_origin, new_remote_repository),
               'git add .',
               'git commit -m initial',
-              #'git push --force -u origin master'
+              'git push --force -u origin master'
           ]),
           stderr=subprocess.STDOUT,
           shell=True).decode()
-
-      #print(push.split('\n'))
 
       logger.info("Successfully retrieved parameter {}".format(name))
       send(event, context, SUCCESS, response_data, name)
