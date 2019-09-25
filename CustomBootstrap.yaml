@@ -237,6 +237,7 @@ Resources:
           - Effect: Allow
             Action:
               - ssm:GetParameter
+              - ec2:CreateNetworkInterface
             Resource: "*"
 
 # Outputs - Display function output
