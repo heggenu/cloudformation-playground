@@ -12,14 +12,28 @@ Metadata:
       Parameters:
         - SubnetName
         - HostedZoneID
+        - VpcID
+        - SubnetIDs
+        - SecurityGroupIDs
     -
       Label:
         default: "Top-level environment configuration"
       Parameters:
-        - VpcName
         - GitSSHPrivateKey
 
 Parameters:
+  VpcID:
+    Description: VPC ID where the Lambda will run
+    Type: AWS::EC2::VPC::Id
+  
+  SubnetIDs:
+    Description: Subnet IDs where the Lambda will run
+    Type: List<AWS::EC2::Subnet::Id>
+
+  SecurityGroupIDs:
+    Description: Security group for Lambda
+    Type: List<AWS::EC2::SecurityGroup::Id>
+
   HostedZoneID:
     Description: Hosted Zone ID
     Type: AWS::Route53::HostedZone::Id
@@ -169,6 +183,9 @@ Resources:
       Runtime: python3.7
       Layers: [!Sub "arn:aws:lambda:${AWS::Region}:553035198032:layer:git:6","arn:aws:lambda:eu-central-1:381251817649:layer:Jinja2:2"]
       Timeout: 30
+      VpcConfig:
+        SecurityGroupIds: !Ref SecurityGroupIds
+        SubnetIds: !Ref SubnetIDs
       Role: !GetAtt LambdaRepoURLExecutionRole.Arn
       Code:
         ZipFile: !Sub |
